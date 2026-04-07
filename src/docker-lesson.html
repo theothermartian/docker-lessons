@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Docker: From First Principles</title>
+<style>
+  :root {
+    --blue: #0db7ed;
+    --dark-blue: #066da5;
+    --navy: #0a1628;
+    --navy2: #0d1f3c;
+    --card: #111c2e;
+    --card2: #162038;
+    --text: #e2e8f0;
+    --muted: #8fa3bf;
+    --green: #23d18b;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --red: #f43f5e;
+    --yellow: #fbbf24;
+    --border: rgba(13,183,237,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--navy);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+
+  /* ─── HERO ─────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, #040d1a 0%, #0a1628 40%, #062040 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(13,183,237,0.12), transparent);
+    pointer-events: none;
+  }
+  .whale-container {
+    margin-bottom: 24px;
+    animation: float 4s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-12px); }
+  }
+  .hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #fff 0%, var(--blue) 60%, var(--dark-blue) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+  .hero-sub {
+    font-size: 1.15rem;
+    color: var(--muted);
+    max-width: 600px;
+    margin: 0 auto 32px;
+  }
+  .badge-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge-blue  { background: rgba(13,183,237,0.15); color: var(--blue);  border: 1px solid rgba(13,183,237,0.3); }
+  .badge-green { background: rgba(35,209,139,0.12); color: var(--green); border: 1px solid rgba(35,209,139,0.3); }
+  .badge-purple{ background: rgba(168,85,247,0.12); color: var(--purple);border: 1px solid rgba(168,85,247,0.3); }
+
+  /* ─── NAV ───────────────────────────────────────── */
+  .toc {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toc::-webkit-scrollbar { display: none; }
+  .toc a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 16px 20px;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .toc a:hover { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* ─── LAYOUT ────────────────────────────────────── */
+  .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  section {
+    padding: 72px 0 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-child { border-bottom: none; }
+
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 12px;
+  }
+  .section-label .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--blue);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
+
+  h2 {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 800;
+    margin-bottom: 20px;
+    letter-spacing: -0.5px;
+  }
+  h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 32px 0 12px;
+    color: #fff;
+  }
+  p { color: var(--muted); margin-bottom: 16px; }
+  strong { color: var(--text); }
+
+  /* ─── CARDS ─────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin: 20px 0;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .card-mini {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card-mini h4 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-mini p { font-size: 0.9rem; margin: 0; }
+
+  /* ─── CODE ───────────────────────────────────────── */
+  pre {
+    background: #060e1a;
+    border: 1px solid rgba(13,183,237,0.2);
+    border-radius: 12px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 20px 0;
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+  code {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    color: #7dd3fc;
+  }
+  pre code { color: #e2e8f0; }
+  .c-cmd  { color: #7dd3fc; }
+  .c-str  { color: #86efac; }
+  .c-com  { color: #4a5568; font-style: italic; }
+  .c-key  { color: #c084fc; }
+  .c-num  { color: #fb923c; }
+  .c-blue { color: var(--blue); }
+
+  /* ─── CALLOUTS ───────────────────────────────────── */
+  .callout {
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 24px 0;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .callout-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+  .callout-body h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; }
+  .callout-body p  { font-size: 0.9rem; margin: 0; }
+  .callout-blue   { background: rgba(13,183,237,0.08); border: 1px solid rgba(13,183,237,0.25); }
+  .callout-green  { background: rgba(35,209,139,0.08); border: 1px solid rgba(35,209,139,0.25); }
+  .callout-yellow { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25); }
+  .callout-blue   h4 { color: var(--blue);   }
+  .callout-green  h4 { color: var(--green);  }
+  .callout-yellow h4 { color: var(--yellow); }
+
+  /* ─── STAT ROW ───────────────────────────────────── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin: 28px 0;
+  }
+  .stat-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--blue), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+  /* ─── VM vs CONTAINER SVG DIAGRAM ───────────────── */
+  .diagram-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 32px 0;
+  }
+  @media(max-width: 600px) {
+    .diagram-wrap { grid-template-columns: 1fr; }
+  }
+  .diag-box {
+    background: #060e1a;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+  }
+  .diag-box h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: 0.5px;
+  }
+  .diag-box.vm-box  h4 { color: var(--orange); }
+  .diag-box.con-box h4 { color: var(--blue); }
+
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .layer {
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .layer-app  { background: rgba(13,183,237,0.2);  color: var(--blue);   border: 1px solid rgba(13,183,237,0.4); }
+  .layer-dep  { background: rgba(168,85,247,0.2);  color: var(--purple); border: 1px solid rgba(168,85,247,0.4); }
+  .layer-os   { background: rgba(249,115,22,0.2);  color: var(--orange); border: 1px solid rgba(249,115,22,0.4); }
+  .layer-hw   { background: rgba(71,85,105,0.4);   color: #94a3b8;       border: 1px solid rgba(71,85,105,0.6); }
+  .layer-hyp  { background: rgba(251,191,36,0.15); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+  .layer-eng  { background: rgba(35,209,139,0.15); color: var(--green);  border: 1px solid rgba(35,209,139,0.3); }
+  .layer-shared { background: rgba(71,85,105,0.25); color: #64748b; border: 1px dashed rgba(71,85,105,0.5); font-style: italic; }
+
+  .multi-apps {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  /* ─── LAYERS DIAGRAM ─────────────────────────────── */
+  .layers-visual {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 24px 0;
+    max-width: 420px;
+  }
+  .lv-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .lv-bar {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .lv-arrow {
+    color: var(--muted);
+    font-size: 1.2rem;
+    text-align: center;
+    padding-left: 16px;
+  }
+  .lv-note {
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ─── CONCEPT GLOSSARY ───────────────────────────── */
+  .concept-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 28px 0;
+  }
+  .concept-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+  .concept-card:hover {
+    border-color: var(--blue);
+    transform: translateY(-2px);
+  }
+  .concept-icon { font-size: 1.6rem; margin-bottom: 10px; }
+  .concept-card h4 { font-size: 0.9rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .concept-card p  { font-size: 0.82rem; color: var(--muted); margin: 0; }
+
+  /* ─── TIMELINE ───────────────────────────────────── */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+    margin: 28px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--blue), var(--green));
+    border-radius: 2px;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 28px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -28px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--blue);
+    border: 2px solid var(--navy);
+    box-shadow: 0 0 0 3px rgba(13,183,237,0.2);
+  }
+  .timeline-year {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .timeline-item h4 { font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .timeline-item p  { font-size: 0.88rem; color: var(--muted); margin: 0; }
+
+  /* ─── USE CASE PILLS ─────────────────────────────── */
+  .use-case-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 28px 0;
+  }
+  .use-case-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+  }
+  .use-case-card .uc-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .uc-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .uc-icon.blue   { background: rgba(13,183,237,0.15); }
+  .uc-icon.green  { background: rgba(35,209,139,0.15); }
+  .uc-icon.purple { background: rgba(168,85,247,0.15); }
+  .uc-icon.orange { background: rgba(249,115,22,0.15); }
+  .uc-icon.yellow { background: rgba(251,191,36,0.15); }
+  .uc-icon.red    { background: rgba(244,63,94,0.15); }
+  .use-case-card h4 { font-size: 1rem; font-weight: 700; color: #fff; }
+  .use-case-card p  { font-size: 0.87rem; color: var(--muted); margin: 0; }
+
+  /* ─── COMPOSE YAML STYLED ───────────────────────── */
+  .yaml-line { display: block; }
+  .y-key   { color: #7dd3fc; }
+  .y-val   { color: #86efac; }
+  .y-com   { color: #4a5568; font-style: italic; }
+  .y-num   { color: #fb923c; }
+  .y-ind   { color: #475569; }
+
+  /* ─── COMMAND REFERENCE ──────────────────────────── */
+  .cmd-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 0.88rem;
+  }
+  .cmd-table th {
+    text-align: left;
+    padding: 10px 16px;
+    background: var(--card2);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmd-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: top;
+  }
+  .cmd-table tr:hover td { background: rgba(13,183,237,0.04); }
+  .cmd-table td:first-child code {
+    color: var(--blue);
+    font-size: 0.82rem;
+    background: rgba(13,183,237,0.08);
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+  .cmd-table td:last-child { color: var(--muted); }
+
+  /* ─── FOOTER ─────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+  .footer a { color: var(--blue); text-decoration: none; }
+
+  /* ─── MISC ───────────────────────────────────────── */
+  ul { color: var(--muted); padding-left: 20px; margin-bottom: 16px; }
+  ul li { margin-bottom: 6px; font-size: 0.93rem; }
+  ul li strong { color: var(--text); }
+  .text-blue   { color: var(--blue);   }
+  .text-green  { color: var(--green);  }
+  .text-orange { color: var(--orange); }
+  .text-purple { color: var(--purple); }
+
+  .divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--blue), transparent);
+    margin: 32px 0;
+    opacity: 0.3;
+  }
+
+  .pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin: 2px;
+  }
+  .pill-blue   { background: rgba(13,183,237,0.15); color: var(--blue);   }
+  .pill-green  { background: rgba(35,209,139,0.15); color: var(--green);  }
+  .pill-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+
+  /* ─── COMMAND ANATOMY ───────────────────────────── */
+  .anatomy-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin: 28px 0;
+  }
+  .anatomy-block h4 {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .anatomy-cmd {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.95rem;
+    background: #060e1a;
+    border: 1px solid rgba(13,183,237,0.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 20px;
+    line-height: 2;
+  }
+  .anatomy-cmd .a-base {
+    color: var(--blue);
+  }
+  .a-arg {
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-weight: 700;
+    cursor: default;
+    white-space: nowrap;
+    transition: filter 0.15s;
+  }
+  .a-arg:hover { filter: brightness(1.25); }
+  .a-plain { color: #8fa3bf; }
+
+  /* argument colors — one per slot */
+  .a1  { background: rgba(13,183,237,0.18);  color: #38bdf8;  border: 1px solid rgba(13,183,237,0.35); }
+  .a2  { background: rgba(35,209,139,0.18);  color: #4ade80;  border: 1px solid rgba(35,209,139,0.35); }
+  .a3  { background: rgba(168,85,247,0.18);  color: #c084fc;  border: 1px solid rgba(168,85,247,0.35); }
+  .a4  { background: rgba(249,115,22,0.18);  color: #fb923c;  border: 1px solid rgba(249,115,22,0.35); }
+  .a5  { background: rgba(251,191,36,0.18);  color: #fbbf24;  border: 1px solid rgba(251,191,36,0.35); }
+  .a6  { background: rgba(244,63,94,0.18);   color: #fb7185;  border: 1px solid rgba(244,63,94,0.35);  }
+  .a7  { background: rgba(20,184,166,0.18);  color: #2dd4bf;  border: 1px solid rgba(20,184,166,0.35); }
+
+  .anatomy-args {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px;
+  }
+  .arg-card {
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    border: 1px solid transparent;
+  }
+  .arg-card .arg-badge {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 5px;
+    margin-top: 1px;
+  }
+  .arg-card .arg-desc {
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .arg-card .arg-desc strong { color: var(--text); }
+
+  .arg-card.a1 { background: rgba(13,183,237,0.07);  border-color: rgba(13,183,237,0.2);  }
+  .arg-card.a2 { background: rgba(35,209,139,0.07);  border-color: rgba(35,209,139,0.2);  }
+  .arg-card.a3 { background: rgba(168,85,247,0.07);  border-color: rgba(168,85,247,0.2);  }
+  .arg-card.a4 { background: rgba(249,115,22,0.07);  border-color: rgba(249,115,22,0.2);  }
+  .arg-card.a5 { background: rgba(251,191,36,0.07);  border-color: rgba(251,191,36,0.2);  }
+  .arg-card.a6 { background: rgba(244,63,94,0.07);   border-color: rgba(244,63,94,0.2);   }
+  .arg-card.a7 { background: rgba(20,184,166,0.07);  border-color: rgba(20,184,166,0.2);  }
+
+  .arg-card.a1 .arg-badge { background: rgba(13,183,237,0.18); color: #38bdf8; }
+  .arg-card.a2 .arg-badge { background: rgba(35,209,139,0.18); color: #4ade80; }
+  .arg-card.a3 .arg-badge { background: rgba(168,85,247,0.18); color: #c084fc; }
+  .arg-card.a4 .arg-badge { background: rgba(249,115,22,0.18); color: #fb923c; }
+  .arg-card.a5 .arg-badge { background: rgba(251,191,36,0.18); color: #fbbf24; }
+  .arg-card.a6 .arg-badge { background: rgba(244,63,94,0.18);  color: #fb7185; }
+  .arg-card.a7 .arg-badge { background: rgba(20,184,166,0.18); color: #2dd4bf; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HERO ══════════════════════════════════ -->
+<div class="hero">
+  <div class="whale-container">
+    <svg width="120" height="90" viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Whale body -->
+      <ellipse cx="55" cy="52" rx="42" ry="22" fill="#0db7ed" opacity="0.9"/>
+      <!-- Tail -->
+      <path d="M13 52 Q2 38 8 28 Q14 38 13 52Z" fill="#0db7ed" opacity="0.7"/>
+      <path d="M13 52 Q2 66 8 76 Q14 62 13 52Z" fill="#0db7ed" opacity="0.7"/>
+      <!-- Eye -->
+      <circle cx="82" cy="46" r="4" fill="white"/>
+      <circle cx="83" cy="46" r="2" fill="#0a1628"/>
+      <!-- Spout -->
+      <path d="M70 32 Q72 14 68 8 M70 32 Q76 16 80 12 M70 32 Q64 18 62 10" stroke="#7dd3fc" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+      <!-- Fin -->
+      <path d="M55 30 Q62 20 72 26 Q65 30 55 30Z" fill="#066da5" opacity="0.8"/>
+      <!-- Containers on back -->
+      <rect x="32" y="34" width="14" height="12" rx="2" fill="#23d18b" opacity="0.9"/>
+      <rect x="48" y="34" width="14" height="12" rx="2" fill="#0db7ed" opacity="0.9"/>
+      <rect x="64" y="34" width="14" height="12" rx="2" fill="#a855f7" opacity="0.9"/>
+      <!-- Container lines -->
+      <line x1="39" y1="34" x2="39" y2="46" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
+      <line x1="55" y1="34" x2="55" y2="46" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
+      <line x1="71" y1="34" x2="71" y2="46" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
+      <!-- Water ripples -->
+      <ellipse cx="55" cy="74" rx="50" ry="6" fill="none" stroke="#0db7ed" stroke-width="1" opacity="0.3"/>
+      <ellipse cx="55" cy="80" rx="38" ry="4" fill="none" stroke="#0db7ed" stroke-width="1" opacity="0.2"/>
+    </svg>
+  </div>
+  <h1>Docker: From First Principles</h1>
+  <p class="hero-sub">A complete introduction to containerization — what it is, why it exists, how industry uses it, and how you can use it at home.</p>
+  <div class="badge-row">
+    <span class="badge badge-blue">CS Fundamentals</span>
+    <span class="badge badge-green">DevOps & Industry</span>
+    <span class="badge badge-purple">Home Lab & Self-Hosting</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ NAV ═══════════════════════════════════ -->
+<nav class="toc">
+  <a href="#problem">The Problem</a>
+  <a href="#history">History</a>
+  <a href="#model">Mental Model</a>
+  <a href="#concepts">Core Concepts</a>
+  <a href="#compose">Docker Compose</a>
+  <a href="#industry">Industry</a>
+  <a href="#homelab">Home Lab</a>
+  <a href="#commands">Commands</a>
+  <a href="#anatomy">Command Anatomy</a>
+</nav>
+
+<!-- ═══════════════════════════════ MAIN ══════════════════════════════════ -->
+<main>
+
+<!-- ──────────── PART 1: THE PROBLEM ──────────────── -->
+<section id="problem">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 1</div>
+  <h2>The Problem Docker Solves</h2>
+  <p>Before we touch a single command, we need to understand the pain that Docker was designed to cure. The best technologies don't appear out of thin air — they emerge from frustration.</p>
+
+  <div class="card">
+    <h3 style="margin-top:0; color: var(--orange);">"It Works On My Machine"</h3>
+    <p>Picture this: you join a new engineering team. Day one, you pull down the codebase. You spend <strong>three days</strong> just getting it to run on your laptop. Wrong Python version. Missing system library. A C extension that only compiles on Ubuntu 20.04. Your senior teammate shrugs: "works on my machine."</p>
+    <p>This is not a niche problem. It has been the most painful, productivity-destroying constant in software for <em>decades</em>.</p>
+  </div>
+
+  <h3>Why Does This Happen?</h3>
+  <p>Applications don't run in a vacuum. They depend on a fragile stack of environmental factors:</p>
+
+  <div class="concept-grid">
+    <div class="concept-card">
+      <div class="concept-icon">🐍</div>
+      <h4>Runtime Versions</h4>
+      <p>Python 3.9 vs 3.12. Node 18 vs 20. One missing minor version can break everything.</p>
+    </div>
+    <div class="concept-card">
+      <div class="concept-icon">📦</div>
+      <h4>System Libraries</h4>
+      <p>libssl, glibc, libpq — low-level C libraries that vary wildly between OS versions.</p>
+    </div>
+    <div class="concept-card">
+      <div class="concept-icon">⚙️</div>
+      <h4>OS Behavior</h4>
+      <p>File paths, permission models, and kernel syscalls differ between Mac, Linux, and Windows.</p>
+    </div>
+    <div class="concept-card">
+      <div class="concept-icon">🌿</div>
+      <h4>Environment Drift</h4>
+      <p>Dev → Staging → Production: each environment gets slightly different over time. Bugs appear only in production.</p>
+    </div>
+  </div>
+
+  <div class="callout callout-blue">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <h4>Docker's Answer</h4>
+      <p>Stop configuring environments. Start <strong>shipping environments</strong>. Package your app <em>and everything it needs to run</em> into a single portable unit.</p>
+    </div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-box">
+      <div class="stat-num">92%</div>
+      <div class="stat-label">IT industry container adoption (2025)</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">973×</div>
+      <div class="stat-label">more frequent deployments with containers</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">30%</div>
+      <div class="stat-label">better resource efficiency</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">90%</div>
+      <div class="stat-label">reduction in deployment time</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 2: HISTORY ──────────────────── -->
+<section id="history">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 2</div>
+  <h2>A Brief History</h2>
+  <p>Docker didn't emerge from nothing. It's built on decades of OS research into process isolation.</p>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="timeline-year">1979</div>
+      <h4>Unix chroot</h4>
+      <p>The earliest form of isolation — changing the apparent root directory for a process. The seed of an idea.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">2000</div>
+      <h4>FreeBSD Jails</h4>
+      <p>First real container-like system — isolated processes with their own filesystem and network view.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">2008</div>
+      <h4>Linux cgroups + namespaces</h4>
+      <p>Google contributes <em>control groups</em> to the Linux kernel. Combined with namespaces, this becomes the foundation all modern containers build on.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">2008</div>
+      <h4>LXC (Linux Containers)</h4>
+      <p>The first user-space interface to cgroups and namespaces. Powerful, but complex to use.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">2013</div>
+      <h4>Docker 0.1 — The Revolution</h4>
+      <p>Solomon Hykes demos Docker at PyCon. It's a friendly, developer-focused wrapper around LXC. The crowd erupts. Docker goes viral in the tech community.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">2014–2015</div>
+      <h4>Industry Adoption Explodes</h4>
+      <p>Google, Amazon, and Microsoft all adopt Docker. Google open-sources Kubernetes for orchestrating containers at scale.</p>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-year">Today</div>
+      <h4>Infrastructure Standard</h4>
+      <p>Containers are the default unit of deployment across cloud platforms. Docker Hub hosts over 15 million images. 92% of IT companies use containers in production.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 3: MENTAL MODEL ─────────────── -->
+<section id="model">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 3</div>
+  <h2>The Mental Model</h2>
+
+  <h3>Analogy: The Shipping Container Revolution</h3>
+  <p>Before standardized shipping containers, every ship was loaded differently. Cargo had to be repacked at every port. Loading took days. Costs were enormous.</p>
+  <p>The <strong>ISO shipping container</strong> (invented in 1956) changed everything. It doesn't matter what's inside — the box is always the same size and shape. Any crane, any ship, any port on Earth can handle it.</p>
+
+  <div class="callout callout-green">
+    <span class="callout-icon">🚢</span>
+    <div class="callout-body">
+      <h4>The Core Analogy</h4>
+      <p><strong>Docker containers are the ISO shipping containers of software.</strong> It doesn't matter what's inside — the container interface is standardized. Any machine running Docker can run your container, whether it's your laptop, a cloud VM, or your home server.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3>Containers vs. Virtual Machines</h3>
+  <p>This is the most critical conceptual distinction for beginners. Both solve isolation, but in fundamentally different ways.</p>
+
+  <div class="diagram-wrap">
+    <div class="diag-box vm-box">
+      <h4>⬛ Virtual Machine</h4>
+      <div class="stack">
+        <div class="multi-apps">
+          <div class="layer layer-app">App A</div>
+          <div class="layer layer-app">App B</div>
+        </div>
+        <div class="layer layer-dep">Dependencies</div>
+        <div class="layer layer-os">Guest OS (full kernel)</div>
+        <div class="layer layer-hyp">Hypervisor</div>
+        <div class="layer layer-os" style="opacity:0.6">Host OS</div>
+        <div class="layer layer-hw">Physical Hardware</div>
+      </div>
+      <p style="font-size:0.78rem; margin-top:14px; color:var(--muted);">Each VM carries a full OS — GBs of overhead. Boots in minutes.</p>
+    </div>
+    <div class="diag-box con-box">
+      <h4>🐳 Docker Containers</h4>
+      <div class="stack">
+        <div class="multi-apps">
+          <div class="layer layer-app">App A</div>
+          <div class="layer layer-app">App B</div>
+        </div>
+        <div class="multi-apps">
+          <div class="layer layer-dep">Deps A</div>
+          <div class="layer layer-dep">Deps B</div>
+        </div>
+        <div class="layer layer-eng">Docker Engine</div>
+        <div class="layer layer-os">Host OS Kernel (shared)</div>
+        <div class="layer layer-hw">Physical Hardware</div>
+      </div>
+      <p style="font-size:0.78rem; margin-top:14px; color:var(--muted);">Containers share the host kernel — MBs of overhead. Starts in milliseconds.</p>
+    </div>
+  </div>
+
+  <h3>The Apartment Building Analogy</h3>
+  <div class="card-grid">
+    <div class="card-mini">
+      <h4>🏠 Virtual Machine = House</h4>
+      <p>Fully self-contained. Its own plumbing, heating, electrical. Complete isolation. Expensive to build, wasteful of land.</p>
+    </div>
+    <div class="card-mini">
+      <h4>🏢 Container = Apartment</h4>
+      <p>Private and isolated, but shares building infrastructure — plumbing, electrical, elevators. Efficient use of resources.</p>
+    </div>
+  </div>
+
+  <div class="callout callout-yellow">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <h4>When do you still want a VM?</h4>
+      <p>When you need a different OS kernel entirely (running Windows on Linux), or when maximum security isolation is required. Containers and VMs aren't mutually exclusive — in production, containers often <em>run inside</em> VMs.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 4: CORE CONCEPTS ───────────── -->
+<section id="concepts">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 4</div>
+  <h2>Core Concepts</h2>
+
+  <!-- IMAGE -->
+  <h3>1. Images — The Blueprint</h3>
+  <p>A Docker <strong>image</strong> is a read-only snapshot containing everything an app needs: code, runtime, libraries, environment variables, and config files. Images are <em>immutable</em> — they never change after creation.</p>
+  <p>Think of an image like a <strong>class definition</strong> in OOP. It's a template, not a running thing.</p>
+
+  <pre><code><span class="c-com"># Pull an existing image from Docker Hub</span>
+<span class="c-cmd">docker pull</span> <span class="c-str">nginx</span>
+
+<span class="c-com"># List images on your machine</span>
+<span class="c-cmd">docker images</span>
+
+<span class="c-com"># Output:</span>
+<span class="c-com"># REPOSITORY   TAG       IMAGE ID       SIZE</span>
+<span class="c-com"># nginx        latest    a72860cb95fd   187MB</span>
+<span class="c-com"># postgres     16        c06a31b6cfa4   432MB</span></code></pre>
+
+  <!-- LAYERS -->
+  <h3>2. Layers — The Efficiency Engine</h3>
+  <p>Images are not monolithic blobs — they're built from <strong>stacked, immutable layers</strong>. Each instruction in a Dockerfile creates one layer. This is like git commits for your filesystem.</p>
+
+  <div class="layers-visual">
+    <div class="lv-row">
+      <div class="lv-bar layer-app">📝 COPY app.py /app/ <span style="margin-left:auto; opacity:0.6; font-size:0.7rem">~12KB</span></div>
+      <span class="lv-note">← your code changes here</span>
+    </div>
+    <div class="lv-arrow" style="padding-left:16px; font-size:0.8rem; color:var(--muted)">built on top of ↓</div>
+    <div class="lv-row">
+      <div class="lv-bar layer-dep">📦 RUN pip install -r requirements.txt <span style="margin-left:auto; opacity:0.6; font-size:0.7rem">~45MB</span></div>
+      <span class="lv-note">← cached unless requirements change</span>
+    </div>
+    <div class="lv-arrow" style="padding-left:16px; font-size:0.8rem; color:var(--muted)">built on top of ↓</div>
+    <div class="lv-row">
+      <div class="lv-bar layer-os">🐍 FROM python:3.12-slim <span style="margin-left:auto; opacity:0.6; font-size:0.7rem">~130MB</span></div>
+      <span class="lv-note">← shared across many images</span>
+    </div>
+  </div>
+
+  <div class="callout callout-green">
+    <span class="callout-icon">⚡</span>
+    <div class="callout-body">
+      <h4>Why Layer Order Matters</h4>
+      <p>Put things that change <em>least</em> first. If you change your code, Docker only rebuilds from that layer up — all earlier layers are served from cache instantly. A rebuild can go from 3 minutes to 3 seconds.</p>
+    </div>
+  </div>
+
+  <!-- DOCKERFILE -->
+  <h3>3. The Dockerfile — Your Build Recipe</h3>
+  <p>A <strong>Dockerfile</strong> is a plain-text script that defines how to build an image. Every line creates a layer.</p>
+
+  <pre><code><span class="c-com"># Start from an official slim Python base image</span>
+<span class="c-key">FROM</span> <span class="c-str">python:3.12-slim</span>
+
+<span class="c-com"># Set the working directory inside the container</span>
+<span class="c-key">WORKDIR</span> <span class="c-str">/app</span>
+
+<span class="c-com"># Copy and install dependencies first (cached layer)</span>
+<span class="c-key">COPY</span> <span class="c-str">requirements.txt .</span>
+<span class="c-key">RUN</span>  <span class="c-str">pip install --no-cache-dir -r requirements.txt</span>
+
+<span class="c-com"># Copy your actual source code (changes often)</span>
+<span class="c-key">COPY</span> <span class="c-str">. .</span>
+
+<span class="c-com"># Document which port the app uses</span>
+<span class="c-key">EXPOSE</span> <span class="c-num">8000</span>
+
+<span class="c-com"># Command to run when the container starts</span>
+<span class="c-key">CMD</span> <span class="c-str">["python", "app.py"]</span></code></pre>
+
+  <pre><code><span class="c-com"># Build the image and tag it</span>
+<span class="c-cmd">docker build</span> -t myapp:v1 .
+
+<span class="c-com"># Run a container from it, mapping port 8000</span>
+<span class="c-cmd">docker run</span> -p 8000:8000 myapp:v1</code></pre>
+
+  <!-- CONTAINERS -->
+  <h3>4. Containers — Running Instances</h3>
+  <p>A <strong>container</strong> is a running instance of an image. Image is the class; container is the object. You can run hundreds of containers from one image simultaneously.</p>
+
+  <pre><code><span class="c-cmd">docker run</span>  -d -p 80:80 --name webserver nginx   <span class="c-com"># start detached</span>
+<span class="c-cmd">docker ps</span>                                         <span class="c-com"># list running containers</span>
+<span class="c-cmd">docker logs</span> webserver                            <span class="c-com"># view output</span>
+<span class="c-cmd">docker exec</span> -it webserver bash                   <span class="c-com"># get a shell inside</span>
+<span class="c-cmd">docker stop</span> webserver                            <span class="c-com"># stop gracefully</span>
+<span class="c-cmd">docker rm</span>   webserver                            <span class="c-com"># remove container</span></code></pre>
+
+  <!-- VOLUMES -->
+  <h3>5. Volumes — Persistent Data</h3>
+  <p>Containers are <strong>ephemeral</strong> by default — delete the container and all its data disappears. <strong>Volumes</strong> mount a directory from the host into the container, persisting data beyond the container's life.</p>
+
+  <pre><code><span class="c-com"># Named volume (Docker manages the location)</span>
+<span class="c-cmd">docker run</span> -v pgdata:/var/lib/postgresql/data postgres:16
+
+<span class="c-com"># Bind mount (explicit host path — great for dev)</span>
+<span class="c-cmd">docker run</span> -v /home/user/myapp:/app myapp:v1
+
+<span class="c-com"># List all volumes</span>
+<span class="c-cmd">docker volume ls</span></code></pre>
+
+  <div class="card-grid">
+    <div class="card-mini">
+      <h4>📁 Named Volumes</h4>
+      <p>Docker manages storage location. Best for databases and production data that needs to survive container updates.</p>
+    </div>
+    <div class="card-mini">
+      <h4>🔗 Bind Mounts</h4>
+      <p>Point to a specific host directory. Perfect for development — edit code on your host, see changes instantly in the container.</p>
+    </div>
+  </div>
+
+  <!-- NETWORKS -->
+  <h3>6. Networks — Container Communication</h3>
+  <p>Containers are <strong>isolated by default</strong>. Networks let containers talk to each other while staying isolated from everything else.</p>
+
+  <pre><code><span class="c-com"># Create a custom network</span>
+<span class="c-cmd">docker network create</span> myapp-net
+
+<span class="c-com"># Run containers on the same network</span>
+<span class="c-cmd">docker run</span> --network myapp-net --name db postgres:16
+<span class="c-cmd">docker run</span> --network myapp-net --name web myapp:v1
+
+<span class="c-com"># "web" can now reach "db" by its container name as hostname</span>
+<span class="c-com"># e.g. DATABASE_URL=postgres://db:5432/mydb</span></code></pre>
+
+  <!-- REGISTRIES -->
+  <h3>7. Registries — Image Distribution</h3>
+  <p>A <strong>registry</strong> is where images are stored and shared — like GitHub but for Docker images.</p>
+
+  <div class="card-grid">
+    <div class="card-mini">
+      <h4>🌐 Docker Hub</h4>
+      <p>The default public registry. Hosts millions of official images: postgres, nginx, redis, python, node...</p>
+    </div>
+    <div class="card-mini">
+      <h4>🔒 Private Registries</h4>
+      <p>AWS ECR, GitHub Container Registry, Google Artifact Registry — for proprietary images in enterprise environments.</p>
+    </div>
+    <div class="card-mini">
+      <h4>🏠 Self-Hosted</h4>
+      <p>Run your own registry at home with the <code>registry:2</code> image. Full control, no rate limits.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 5: DOCKER COMPOSE ──────────── -->
+<section id="compose">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 5</div>
+  <h2>Docker Compose</h2>
+  <p>Almost no real application is a single container. A typical web app needs a web server, a database, a cache, maybe a background worker. Running them all with individual <code>docker run</code> commands is painful and error-prone.</p>
+  <p><strong>Docker Compose</strong> lets you define your entire stack in one YAML file and launch everything with a single command.</p>
+
+  <h3>A Real-World Example</h3>
+  <p>A Python web app with Postgres and Redis:</p>
+
+  <pre><code><span class="c-com"># docker-compose.yml</span>
+<span class="c-key">services</span>:
+
+  <span class="c-key">web</span>:
+    <span class="c-key">build</span>: .                        <span class="c-com"># build from local Dockerfile</span>
+    <span class="c-key">ports</span>:
+      - <span class="c-str">"8000:8000"</span>
+    <span class="c-key">environment</span>:
+      - <span class="c-str">DATABASE_URL=postgres://user:pass@db:5432/mydb</span>
+      - <span class="c-str">REDIS_URL=redis://cache:6379</span>
+    <span class="c-key">depends_on</span>:
+      - db
+      - cache
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">.:/app</span>                       <span class="c-com"># live code reloading in dev</span>
+
+  <span class="c-key">db</span>:
+    <span class="c-key">image</span>: <span class="c-str">postgres:16</span>
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">pgdata:/var/lib/postgresql/data</span>
+    <span class="c-key">environment</span>:
+      - <span class="c-str">POSTGRES_PASSWORD=pass</span>
+      - <span class="c-str">POSTGRES_USER=user</span>
+      - <span class="c-str">POSTGRES_DB=mydb</span>
+
+  <span class="c-key">cache</span>:
+    <span class="c-key">image</span>: <span class="c-str">redis:7-alpine</span>           <span class="c-com"># alpine = tiny image</span>
+
+<span class="c-key">volumes</span>:
+  <span class="c-key">pgdata</span>:                           <span class="c-com"># named volume persists data</span></code></pre>
+
+  <pre><code><span class="c-cmd">docker compose up</span> -d       <span class="c-com"># start entire stack in background</span>
+<span class="c-cmd">docker compose logs</span> -f     <span class="c-com"># follow all logs</span>
+<span class="c-cmd">docker compose down</span>        <span class="c-com"># stop and remove containers</span>
+<span class="c-cmd">docker compose down</span> -v     <span class="c-com"># also remove volumes (wipes data!)</span>
+<span class="c-cmd">docker compose exec</span> web bash  <span class="c-com"># shell into a running service</span></code></pre>
+
+  <div class="card-grid">
+    <div class="card-mini">
+      <h4>✅ Automatic Networking</h4>
+      <p>Compose creates a shared network automatically. Services reach each other by service name as hostname.</p>
+    </div>
+    <div class="card-mini">
+      <h4>✅ Repeatable</h4>
+      <p>Same configuration every time. No forgetting a <code>-e</code> flag. Git-commit your compose file and share with the team.</p>
+    </div>
+    <div class="card-mini">
+      <h4>✅ Startup Order</h4>
+      <p><code>depends_on</code> ensures services start in the right order — database before the web server.</p>
+    </div>
+  </div>
+
+  <div class="callout callout-blue">
+    <span class="callout-icon">🎓</span>
+    <div class="callout-body">
+      <h4>The Golden Workflow</h4>
+      <p>New developer joins the team: <code>git clone</code> the repo, run <code>docker compose up</code>, and the entire environment is running in seconds. No 20-page setup guide needed.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 6: INDUSTRY USE CASES ──────── -->
+<section id="industry">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 6</div>
+  <h2>Industry Use Cases</h2>
+  <p>Docker didn't just change how developers work — it fundamentally changed how software is built, tested, and deployed at every scale.</p>
+
+  <div class="use-case-grid">
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon blue">🔄</div>
+        <h4>CI/CD Pipelines</h4>
+      </div>
+      <p>Every GitHub Actions job, GitLab CI pipeline, and Jenkins build runs inside a Docker container. This guarantees test environments are identical to production — no more "passed tests but failed in prod."</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">GitHub Actions</span>
+        <span class="pill pill-blue">GitLab CI</span>
+        <span class="pill pill-blue">Jenkins</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon purple">🧩</div>
+        <h4>Microservices</h4>
+      </div>
+      <p>Netflix, Uber, Amazon decomposed their monoliths into hundreds of small services, each running in its own container. Docker provides the isolation unit. Kubernetes orchestrates them at scale.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">Netflix</span>
+        <span class="pill pill-blue">Uber</span>
+        <span class="pill pill-blue">Amazon</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon green">💻</div>
+        <h4>Dev Environments</h4>
+      </div>
+      <p>Ship a <code>docker-compose.yml</code> instead of a setup guide. New engineers are productive on day one. Every developer runs identical environments regardless of their OS.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-green">Onboarding</span>
+        <span class="pill pill-green">Team Consistency</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon orange">🔬</div>
+        <h4>Data Science & ML</h4>
+      </div>
+      <p>Reproducible research and model training. Package a Jupyter notebook with exact Python and CUDA versions. Anyone can reproduce your results exactly, anywhere.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-orange">Jupyter</span>
+        <span class="pill pill-orange">PyTorch</span>
+        <span class="pill pill-orange">TensorFlow</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon yellow">☁️</div>
+        <h4>Cloud & Serverless</h4>
+      </div>
+      <p>AWS Lambda, Google Cloud Run, and Azure Container Apps all run your code inside containers under the hood. Understanding Docker means understanding the cloud.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">AWS ECS</span>
+        <span class="pill pill-blue">Cloud Run</span>
+        <span class="pill pill-blue">Kubernetes</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon red">🛡️</div>
+        <h4>Security & Isolation</h4>
+      </div>
+      <p>Run untrusted code, legacy applications, or security-sensitive workloads in isolated containers. Contains blast radius if something goes wrong.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">Sandboxing</span>
+        <span class="pill pill-blue">Legacy Apps</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-blue" style="margin-top:8px">
+    <span class="callout-icon">📊</span>
+    <div class="callout-body">
+      <h4>2025 Docker State of Application Development Report</h4>
+      <p>Container usage in IT has grown from 80% in 2024 to <strong>92% in 2025</strong>. High-performing teams using containers deploy <strong>973× more frequently</strong> and recover from failures <strong>6,570× faster</strong> than teams without containerization.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 7: HOME LAB ────────────────── -->
+<section id="homelab">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 7</div>
+  <h2>Home Lab &amp; Self-Hosting</h2>
+  <p>Docker isn't just for enterprise teams with Kubernetes clusters. For power users at home, Docker is arguably <em>more</em> transformative — it turns a spare PC or Raspberry Pi into a personal cloud server running dozens of services, all managed with a single compose file.</p>
+
+  <div class="callout callout-green">
+    <span class="callout-icon">🏠</span>
+    <div class="callout-body">
+      <h4>The Home Lab Philosophy</h4>
+      <p>Instead of paying monthly for 10 different SaaS subscriptions, self-hosters run open-source alternatives on their own hardware. Docker makes this practical — one machine can run 20+ services simultaneously, each isolated and updatable independently.</p>
+    </div>
+  </div>
+
+  <h3>Popular Self-Hosted Stacks</h3>
+
+  <div class="use-case-grid">
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon blue">🎬</div>
+        <h4>Media Server</h4>
+      </div>
+      <p><strong>Jellyfin</strong> or <strong>Plex</strong> — your own Netflix. Stream your personal media library to any device at home or remotely.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">Jellyfin</span>
+        <span class="pill pill-blue">Plex</span>
+        <span class="pill pill-blue">Radarr</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon purple">🔒</div>
+        <h4>Password Manager</h4>
+      </div>
+      <p><strong>Vaultwarden</strong> (Bitwarden-compatible) — self-host your entire password vault. Your passwords never touch anyone else's server.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-purple">Vaultwarden</span>
+        <span class="pill pill-purple">Bitwarden</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon green">☁️</div>
+        <h4>Personal Cloud</h4>
+      </div>
+      <p><strong>Nextcloud</strong> — self-hosted Google Drive + Docs + Calendar + Contacts. Full data sovereignty.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-green">Nextcloud</span>
+        <span class="pill pill-green">Immich (photos)</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon orange">🛡️</div>
+        <h4>Network Ad Blocking</h4>
+      </div>
+      <p><strong>Pi-hole</strong> — DNS-level ad and tracker blocking for your entire home network. No ads on any device.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-orange">Pi-hole</span>
+        <span class="pill pill-orange">AdGuard Home</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon yellow">📊</div>
+        <h4>Monitoring</h4>
+      </div>
+      <p><strong>Uptime Kuma</strong> monitors all your services and alerts you when something goes down. <strong>Portainer</strong> gives you a GUI for all your Docker containers.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">Uptime Kuma</span>
+        <span class="pill pill-blue">Portainer</span>
+        <span class="pill pill-blue">Grafana</span>
+      </div>
+    </div>
+
+    <div class="use-case-card">
+      <div class="uc-header">
+        <div class="uc-icon red">🏠</div>
+        <h4>Home Automation</h4>
+      </div>
+      <p><strong>Home Assistant</strong> — the most powerful home automation platform, self-hosted. Integrates with thousands of smart home devices.</p>
+      <div style="margin-top:10px">
+        <span class="pill pill-blue">Home Assistant</span>
+        <span class="pill pill-blue">Node-RED</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>A Real Home Server Compose File</h3>
+  <pre><code><span class="c-com"># Typical minimal home server stack</span>
+<span class="c-key">services</span>:
+
+  <span class="c-com"># Dashboard to manage all containers</span>
+  <span class="c-key">portainer</span>:
+    <span class="c-key">image</span>: <span class="c-str">portainer/portainer-ce</span>
+    <span class="c-key">ports</span>: [<span class="c-str">"9000:9000"</span>]
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">/var/run/docker.sock:/var/run/docker.sock</span>
+      - <span class="c-str">portainer_data:/data</span>
+
+  <span class="c-com"># Network-wide ad blocking</span>
+  <span class="c-key">pihole</span>:
+    <span class="c-key">image</span>: <span class="c-str">pihole/pihole</span>
+    <span class="c-key">ports</span>: [<span class="c-str">"53:53/udp"</span>, <span class="c-str">"8080:80"</span>]
+    <span class="c-key">environment</span>:
+      WEBPASSWORD: <span class="c-str">"changeme"</span>
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">pihole_data:/etc/pihole</span>
+
+  <span class="c-com"># Self-hosted password manager</span>
+  <span class="c-key">vaultwarden</span>:
+    <span class="c-key">image</span>: <span class="c-str">vaultwarden/server</span>
+    <span class="c-key">ports</span>: [<span class="c-str">"8888:80"</span>]
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">vaultwarden_data:/data</span>
+
+  <span class="c-com"># Uptime monitoring</span>
+  <span class="c-key">uptime-kuma</span>:
+    <span class="c-key">image</span>: <span class="c-str">louislam/uptime-kuma</span>
+    <span class="c-key">ports</span>: [<span class="c-str">"3001:3001"</span>]
+    <span class="c-key">volumes</span>:
+      - <span class="c-str">kuma_data:/app/data</span>
+
+<span class="c-key">volumes</span>:
+  portainer_data:
+  pihole_data:
+  vaultwarden_data:
+  kuma_data:</code></pre>
+</div>
+</section>
+
+<!-- ──────────── PART 8: COMMAND REFERENCE ────────── -->
+<section id="commands">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 8</div>
+  <h2>Essential Command Reference</h2>
+
+  <h3>Images</h3>
+  <table class="cmd-table">
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>docker pull nginx</code></td><td>Download image from Docker Hub</td></tr>
+    <tr><td><code>docker images</code></td><td>List all local images</td></tr>
+    <tr><td><code>docker build -t myapp:v1 .</code></td><td>Build image from Dockerfile in current directory</td></tr>
+    <tr><td><code>docker push myname/myapp:v1</code></td><td>Push image to registry</td></tr>
+    <tr><td><code>docker rmi nginx</code></td><td>Remove an image</td></tr>
+    <tr><td><code>docker image prune</code></td><td>Remove all dangling (unused) images</td></tr>
+  </table>
+
+  <h3>Containers</h3>
+  <table class="cmd-table">
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>docker run -d -p 80:80 nginx</code></td><td>Run container in background, map port 80</td></tr>
+    <tr><td><code>docker run -it ubuntu bash</code></td><td>Run interactively with a shell</td></tr>
+    <tr><td><code>docker ps</code></td><td>List running containers</td></tr>
+    <tr><td><code>docker ps -a</code></td><td>List all containers including stopped</td></tr>
+    <tr><td><code>docker logs -f myapp</code></td><td>Follow container logs</td></tr>
+    <tr><td><code>docker exec -it myapp bash</code></td><td>Open shell in running container</td></tr>
+    <tr><td><code>docker stop myapp</code></td><td>Gracefully stop a container</td></tr>
+    <tr><td><code>docker rm myapp</code></td><td>Remove a stopped container</td></tr>
+    <tr><td><code>docker stats</code></td><td>Live CPU/memory usage of all containers</td></tr>
+    <tr><td><code>docker inspect myapp</code></td><td>Full JSON details about a container</td></tr>
+  </table>
+
+  <h3>Docker Compose</h3>
+  <table class="cmd-table">
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>docker compose up</code></td><td>Create and start all services</td></tr>
+    <tr><td><code>docker compose up -d</code></td><td>Start all services in background</td></tr>
+    <tr><td><code>docker compose down</code></td><td>Stop and remove containers</td></tr>
+    <tr><td><code>docker compose down -v</code></td><td>Also remove volumes (deletes data!)</td></tr>
+    <tr><td><code>docker compose logs -f</code></td><td>Follow logs for all services</td></tr>
+    <tr><td><code>docker compose exec web bash</code></td><td>Shell into the "web" service</td></tr>
+    <tr><td><code>docker compose pull</code></td><td>Pull latest images for all services</td></tr>
+    <tr><td><code>docker compose ps</code></td><td>Status of all compose services</td></tr>
+    <tr><td><code>docker compose restart web</code></td><td>Restart a specific service</td></tr>
+  </table>
+
+  <h3>System Housekeeping</h3>
+  <table class="cmd-table">
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>docker system prune</code></td><td>Remove stopped containers, unused networks, dangling images</td></tr>
+    <tr><td><code>docker system prune -a</code></td><td>Also remove all unused images (aggressive cleanup)</td></tr>
+    <tr><td><code>docker system df</code></td><td>Show disk usage by Docker</td></tr>
+    <tr><td><code>docker volume prune</code></td><td>Remove all unused volumes</td></tr>
+  </table>
+
+  <div class="callout callout-yellow" style="margin-top: 32px">
+    <span class="callout-icon">🗺️</span>
+    <div class="callout-body">
+      <h4>What's Next After Docker?</h4>
+      <p>Once you're comfortable with Docker and Compose, the natural next step is <strong>Kubernetes (K8s)</strong> — the system for orchestrating containers across multiple machines at scale. Most cloud platforms (AWS EKS, GKE, AKS) are built around Kubernetes. But Docker is the essential prerequisite.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ──────────── PART 9: COMMAND ANATOMY ─────────── -->
+<section id="anatomy">
+<div class="container">
+  <div class="section-label"><span class="dot"></span>Part 9</div>
+  <h2>Command Anatomy</h2>
+  <p>Docker commands can look intimidating at first glance. Each block below breaks a real command apart — every argument is color-coded and explained so you can read (and build) commands with confidence.</p>
+
+  <!-- docker run -->
+  <div class="anatomy-block">
+    <h4>docker run — start a container</h4>
+    <div class="anatomy-cmd">
+      <span class="a-base">docker run</span>
+      <span class="a-arg a1">-d</span>
+      <span class="a-arg a2">-p 8080:80</span>
+      <span class="a-arg a3">--name webserver</span>
+      <span class="a-arg a4">-v ./html:/usr/share/nginx/html</span>
+      <span class="a-arg a5">-e NGINX_HOST=localhost</span>
+      <span class="a-arg a6">--rm</span>
+      <span class="a-arg a7">nginx:1.27</span>
+    </div>
+    <div class="anatomy-args">
+      <div class="arg-card a1">
+        <span class="arg-badge">-d</span>
+        <div class="arg-desc"><strong>Detached mode.</strong> Runs the container in the background so your terminal is free. Without it, output streams directly to your shell and Ctrl-C kills the container.</div>
+      </div>
+      <div class="arg-card a2">
+        <span class="arg-badge">-p 8080:80</span>
+        <div class="arg-desc"><strong>Port mapping.</strong> Forwards <strong>host port 8080</strong> → <strong>container port 80</strong>. Format is always <code>host:container</code>. Visit <code>localhost:8080</code> to hit the server inside.</div>
+      </div>
+      <div class="arg-card a3">
+        <span class="arg-badge">--name</span>
+        <div class="arg-desc"><strong>Container name.</strong> Gives the container a human-readable name instead of a random one like <code>sleepy_bohr</code>. Use it in later commands: <code>docker logs webserver</code>.</div>
+      </div>
+      <div class="arg-card a4">
+        <span class="arg-badge">-v src:dst</span>
+        <div class="arg-desc"><strong>Bind mount.</strong> Maps <code>./html</code> on your machine into the container's web root. Changes you make to files on the host appear inside the container instantly.</div>
+      </div>
+      <div class="arg-card a5">
+        <span class="arg-badge">-e KEY=VAL</span>
+        <div class="arg-desc"><strong>Environment variable.</strong> Injects a variable into the container's environment. Apps read these at startup for config — database URLs, API keys, feature flags, etc.</div>
+      </div>
+      <div class="arg-card a6">
+        <span class="arg-badge">--rm</span>
+        <div class="arg-desc"><strong>Auto-remove.</strong> Deletes the container the moment it stops. Keeps your system clean for one-off or test containers. Skip this for long-lived services you want to restart.</div>
+      </div>
+      <div class="arg-card a7">
+        <span class="arg-badge">nginx:1.27</span>
+        <div class="arg-desc"><strong>Image + tag.</strong> The image to run. <code>nginx</code> is the name; <code>1.27</code> is the version tag. Pinning a tag avoids surprise breakage when <code>latest</code> updates.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- docker build -->
+  <div class="anatomy-block">
+    <h4>docker build — create an image from a Dockerfile</h4>
+    <div class="anatomy-cmd">
+      <span class="a-base">docker build</span>
+      <span class="a-arg a1">-t myapp:v2</span>
+      <span class="a-arg a2">-f Dockerfile.prod</span>
+      <span class="a-arg a3">--no-cache</span>
+      <span class="a-arg a4">--build-arg ENV=production</span>
+      <span class="a-arg a5">.</span>
+    </div>
+    <div class="anatomy-args">
+      <div class="arg-card a1">
+        <span class="arg-badge">-t name:tag</span>
+        <div class="arg-desc"><strong>Tag the image.</strong> Names the resulting image. Without a tag, Docker uses <code>latest</code>. Good practice: use a version number or git SHA so you can roll back.</div>
+      </div>
+      <div class="arg-card a2">
+        <span class="arg-badge">-f FILE</span>
+        <div class="arg-desc"><strong>Dockerfile path.</strong> Specifies which Dockerfile to use. Default is <code>./Dockerfile</code>. Useful when you have separate files for dev and production builds.</div>
+      </div>
+      <div class="arg-card a3">
+        <span class="arg-badge">--no-cache</span>
+        <div class="arg-desc"><strong>Bypass layer cache.</strong> Forces every step to re-run from scratch. Slower, but guarantees you're not using a stale cached layer — useful in CI or when debugging a build.</div>
+      </div>
+      <div class="arg-card a4">
+        <span class="arg-badge">--build-arg</span>
+        <div class="arg-desc"><strong>Build-time variable.</strong> Passes a variable into the Dockerfile (referenced with <code>ARG ENV</code>). Different from <code>-e</code> — only available during the build, not at runtime.</div>
+      </div>
+      <div class="arg-card a5">
+        <span class="arg-badge">.</span>
+        <div class="arg-desc"><strong>Build context.</strong> The directory Docker sends to the daemon as the build context. <code>.</code> means the current directory. COPY instructions in the Dockerfile resolve relative to this path.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- docker exec -->
+  <div class="anatomy-block">
+    <h4>docker exec — run a command inside a running container</h4>
+    <div class="anatomy-cmd">
+      <span class="a-base">docker exec</span>
+      <span class="a-arg a1">-it</span>
+      <span class="a-arg a2">--user root</span>
+      <span class="a-arg a3">--workdir /app</span>
+      <span class="a-arg a4">myapp</span>
+      <span class="a-arg a5">bash</span>
+    </div>
+    <div class="anatomy-args">
+      <div class="arg-card a1">
+        <span class="arg-badge">-it</span>
+        <div class="arg-desc"><strong>Interactive TTY.</strong> Two flags combined: <code>-i</code> keeps stdin open; <code>-t</code> allocates a pseudo-terminal. Together they give you a usable interactive shell. Omit both for non-interactive scripts.</div>
+      </div>
+      <div class="arg-card a2">
+        <span class="arg-badge">--user</span>
+        <div class="arg-desc"><strong>Run as user.</strong> Overrides the default user the container was built with. Helpful when a container runs as a restricted user but you need root access to inspect or install something.</div>
+      </div>
+      <div class="arg-card a3">
+        <span class="arg-badge">--workdir</span>
+        <div class="arg-desc"><strong>Starting directory.</strong> Sets the working directory for the command inside the container. Without this you land wherever the image's <code>WORKDIR</code> is set.</div>
+      </div>
+      <div class="arg-card a4">
+        <span class="arg-badge">myapp</span>
+        <div class="arg-desc"><strong>Target container.</strong> The name or ID of the running container to exec into. The container must already be running — <code>exec</code> doesn't start a stopped container.</div>
+      </div>
+      <div class="arg-card a5">
+        <span class="arg-badge">bash</span>
+        <div class="arg-desc"><strong>Command to run.</strong> The program to execute inside the container. Use <code>bash</code> or <code>sh</code> for a shell. Could also be a one-liner like <code>env</code>, <code>cat /etc/hosts</code>, or any binary in the image.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- docker compose up -->
+  <div class="anatomy-block">
+    <h4>docker compose up — start a multi-container stack</h4>
+    <div class="anatomy-cmd">
+      <span class="a-base">docker compose</span>
+      <span class="a-arg a1">-f docker-compose.prod.yml</span>
+      <span class="a-arg a2">up</span>
+      <span class="a-arg a3">-d</span>
+      <span class="a-arg a4">--build</span>
+      <span class="a-arg a5">--scale web=3</span>
+      <span class="a-arg a6">--remove-orphans</span>
+    </div>
+    <div class="anatomy-args">
+      <div class="arg-card a1">
+        <span class="arg-badge">-f FILE</span>
+        <div class="arg-desc"><strong>Compose file.</strong> Specifies an alternate compose file. Default is <code>docker-compose.yml</code>. Teams often keep separate files for dev and prod environments.</div>
+      </div>
+      <div class="arg-card a2">
+        <span class="arg-badge">up</span>
+        <div class="arg-desc"><strong>Create and start.</strong> Creates networks and volumes if they don't exist, pulls or builds any missing images, then starts all services defined in the compose file.</div>
+      </div>
+      <div class="arg-card a3">
+        <span class="arg-badge">-d</span>
+        <div class="arg-desc"><strong>Detached.</strong> Runs all services in the background. Without it, logs from every service stream to your terminal and Ctrl-C stops the entire stack.</div>
+      </div>
+      <div class="arg-card a4">
+        <span class="arg-badge">--build</span>
+        <div class="arg-desc"><strong>Force rebuild.</strong> Rebuilds images from their Dockerfiles before starting, even if a cached image already exists. Essential after you change application code or dependencies.</div>
+      </div>
+      <div class="arg-card a5">
+        <span class="arg-badge">--scale svc=N</span>
+        <div class="arg-desc"><strong>Horizontal scaling.</strong> Starts <strong>N</strong> replicas of the named service. Here, three <code>web</code> containers run simultaneously — great for load testing or simple horizontal scale-out.</div>
+      </div>
+      <div class="arg-card a6">
+        <span class="arg-badge">--remove-orphans</span>
+        <div class="arg-desc"><strong>Clean up removed services.</strong> Stops and removes containers for services that were in the compose file previously but have since been deleted. Keeps your stack in sync with the file.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════ FOOTER ════════════════════════════════ -->
+<footer class="footer">
+  <p style="margin-bottom: 12px;">
+    <strong style="color: var(--blue);">Docker: From First Principles</strong> &nbsp;·&nbsp; CS Lecture Notes
+  </p>
+  <p>
+    <a href="https://docs.docker.com">Docker Docs</a> &nbsp;·&nbsp;
+    <a href="https://hub.docker.com">Docker Hub</a> &nbsp;·&nbsp;
+    <a href="https://github.com/awesome-selfhosted/awesome-selfhosted">Awesome Self-Hosted</a>
+  </p>
+  <p style="margin-top: 12px; font-size: 0.75rem; color: #2d3f57;">
+    Sources: Docker Docs · Docker 2025 State of App Dev Report · Atlassian · AWS · IBM · DEV Community · r/selfhosted · r/homelab
+  </p>
+</footer>
+
+</body>
+</html>
